@@ -35,6 +35,26 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
 from pydantic import BaseModel
 
+# Bumped whenever the tool surface changes. The web UI compares this against the
+# tools it expects so a stale, still-running agent is reported as such instead of
+# surfacing bare 404s.
+AGENT_VERSION = "2026.08.27"
+
+# Android/ADB tool names this build exposes (used by /health and diagnostics).
+ANDROID_TOOLS = [
+    "android_capabilities",
+    "device_status",
+    "device_connect",
+    "device_disconnect",
+    "device_info",
+    "launch_app",
+    "device_screenshot",
+    "device_tap",
+    "device_type_text",
+    "device_keyevent",
+]
+
+
 # ---- Browser cowork (Selenium / installed Chrome) ----
 # Lazy-imported so the agent still runs if Selenium isn't installed yet.
 _browser_lock = threading.Lock()
