@@ -15,6 +15,27 @@ python jarvis_agent.py
 Leave the terminal window open. In the JARVIS web app, the **LOCAL AGENT**
 status indicator should turn cyan within ~5 seconds.
 
+### ⚠️ Restart the agent after every project update
+
+The agent is a plain Python process: it loads `jarvis_agent.py`,
+`android_manager.py` and `esp_manager.py` **once, at startup**. If you pull new
+project files while it is running, the old code keeps serving requests and any
+newly added tool answers `404 Not Found` (this is exactly what caused
+`POST /tool/device_status 404` and `POST /tool/device_keyevent 404`).
+
+After pulling:
+
+1. `Ctrl+C` in the agent terminal.
+2. Make sure `jarvis_agent.py`, `android_manager.py` and `esp_manager.py` are all
+   in the same folder.
+3. `python jarvis_agent.py`
+4. Check `http://127.0.0.1:7337/health` — it reports `agent_version` and the full
+   list of registered tools.
+
+NEXUS now detects this automatically: a 404 from any tool is reported as
+"stale local agent — restart it", including the version actually running.
+
+
 ## What it can do
 
 | Tool | What happens |
