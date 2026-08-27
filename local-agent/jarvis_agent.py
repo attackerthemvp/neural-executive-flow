@@ -1644,12 +1644,29 @@ async def tool_device_command(request: Request):
 # --------------------------------------------------------------------------- #
 # Android / ADB Control routes (see android_manager.py)
 # --------------------------------------------------------------------------- #
-from android_manager import AndroidManager, AndroidManagerError
+# Imported defensively: if android_manager.py is missing (stale checkout) the
+# rest of the agent must keep working, and the Android routes must answer with a
+# clear diagnostic instead of vanishing (which shows up as a confusing 404).
+try:
+    from android_manager import AndroidManager, AndroidManagerError  # type: ignore
+    _ANDROID_IMPORT_ERROR = None
+except Exception as _e:  # pragma: no cover - depends on local checkout
+    AndroidManager = None  # type: ignore
+
+    class AndroidManagerError(Exception):  # type: ignore
+        pass
+
+    _ANDROID_IMPORT_ERROR = str(_e)
 
 _android_manager = None
 
 def _get_android_manager():
     global _android_manager
+    if AndroidManager is None:
+        raise AndroidManagerError(
+            "android_manager.py is not available next to jarvis_agent.py "
+            f"({_ANDROID_IMPORT_ERROR}). Pull the latest project files and restart the agent."
+        )
     if _android_manager is None:
         _android_manager = AndroidManager()
     return _android_manager
@@ -1687,11 +1704,65 @@ class KeyeventArg(BaseModel):
     keycode: int
     serial: str | None = None
 
+class AdbConnectArg(BaseModel):
+    host: str
+    port: int = 5555
+
+class AdbDisconnectArg(BaseModel):
+    host: str | None = None
+    port: int = 5555
+
+
+@app.post("/tool/android_capabilities")
+@app.get("/tool/android_capabilities")
+def tool_android_capabilities():
+    """Diagnostics: which Android tools this agent build exposes, and ADB state."""
+    adb_path = None
+    adb_error = None
+    devices = []
+    try:
+        mgr = _get_android_manager()
+        adb_path = mgr.adb_path
+        devices = mgr.list_devices()
+    except Exception as e:
+        adb_error = str(e)
+    return {
+        "ok": adb_error is None,
+        "agent_version": AGENT_VERSION,
+        "android_manager_loaded": AndroidManager is not None,
+        "android_import_error": _ANDROID_IMPORT_ERROR,
+        "adb_path": adb_path,
+        "adb_error": adb_error,
+        "devices": devices,
+        "tools": ANDROID_TOOLS,
+        "notes": "Once a device is paired over ADB TCP/IP (adb connect host:5555) USB is not required.",
+    }
+
 
 @app.post("/tool/device_status")
+@app.get("/tool/device_status")
 def tool_device_status():
-    """List connected Android devices."""
+    """List connected Android devices (USB or ADB over TCP/IP)."""
     return _android_call(lambda mgr: mgr.list_devices())
+
+
+@app.post("/tool/device_connect")
+def tool_device_connect(arg: AdbConnectArg):
+    """Connect to an Android device over ADB TCP/IP (no USB needed afterwards)."""
+    return _android_call(lambda mgr: {
+        "ok": True,
+        "detail": mgr.connect_device(host=arg.host, port=arg.port),
+        "devices": mgr.list_devices(),
+    })
+
+
+@app.post("/tool/device_disconnect")
+def tool_device_disconnect(arg: AdbDisconnectArg):
+    """Disconnect an ADB TCP/IP device (or all of them when host is omitted)."""
+    return _android_call(lambda mgr: {
+        "ok": True,
+        "detail": mgr.disconnect_device(host=arg.host, port=arg.port),
+    })
 
 
 @app.post("/tool/device_info")
@@ -1744,6 +1815,8 @@ def tool_device_keyevent(arg: KeyeventArg):
         "ok": True,
         "detail": mgr.send_keyevent(keycode=arg.keycode, serial=arg.serial)
     })
+
+
 
 
 
