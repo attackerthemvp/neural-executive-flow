@@ -679,7 +679,19 @@ class WriteArg(BaseModel):
 
 @app.get("/health")
 def health():
-    return {"ok": True, "os": platform.system(), "release": platform.release()}
+    return {
+        "ok": True,
+        "os": platform.system(),
+        "release": platform.release(),
+        "agent_version": AGENT_VERSION,
+        "android": ANDROID_TOOLS,
+        "tools": sorted(
+            r.path[len("/tool/"):]
+            for r in app.routes
+            if getattr(r, "path", "").startswith("/tool/")
+        ),
+    }
+
 
 
 @app.post("/tool/run_command")
