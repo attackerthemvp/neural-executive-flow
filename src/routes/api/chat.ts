@@ -429,6 +429,44 @@ export const Route = createFileRoute("/api/chat")({
                 }
               }
             },
+            {
+              type: "function",
+              function: {
+                name: "android_capabilities",
+                description: "Diagnostics for Android/ADB control: reports the local agent version, whether adb was found, which Android tools this agent build exposes, and the currently connected devices. Call this first when any device_* tool fails or returns a 404/stale-agent error.",
+                parameters: { type: "object", properties: {} }
+              }
+            },
+            {
+              type: "function",
+              function: {
+                name: "device_connect",
+                description: "Pair with an Android device over ADB TCP/IP (wireless). After this succeeds no USB cable is required. Ask the user for the phone's LAN IP if unknown.",
+                parameters: {
+                  type: "object",
+                  properties: {
+                    host: { type: "string", description: "Device IP address or hostname on the LAN" },
+                    port: { type: "integer", description: "ADB TCP port, default 5555" }
+                  },
+                  required: ["host"]
+                }
+              }
+            },
+            {
+              type: "function",
+              function: {
+                name: "device_disconnect",
+                description: "Disconnect an ADB TCP/IP Android device, or all of them when host is omitted.",
+                parameters: {
+                  type: "object",
+                  properties: {
+                    host: { type: "string" },
+                    port: { type: "integer", description: "ADB TCP port, default 5555" }
+                  }
+                }
+              }
+            },
+
           ];
 
           // First gate: never even offer the model a tool the user's Security /
