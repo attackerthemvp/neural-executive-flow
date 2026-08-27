@@ -50,6 +50,58 @@ NEXUS now detects this automatically: a 404 from any tool is reported as
 | `system_info` | Returns OS/CPU/RAM/disk info |
 | `browser_*` | **Cowork mode** — JARVIS drives your installed Chrome with Selenium and a glowing red cursor overlay; you use the same window with your normal cursor |
 | `desktop_*` | **Desktop cowork mode** — JARVIS inspects the active desktop app and uses mouse/keyboard control for launchers, installers, settings windows, etc. |
+| `device_*` / `launch_app` | **Android control over ADB** (see below) |
+| `android_capabilities` | Diagnostics: agent version, adb path, connected devices, Android tool list |
+
+## Android control (ADB, Windows-friendly)
+
+`android_manager.py` must sit next to `jarvis_agent.py`. Install Android Platform
+Tools and make sure `adb` is on `PATH` (the agent also auto-detects
+`C:\Program Files (x86)\Android\android-sdk\platform-tools\adb.exe`,
+`C:\Android\sdk\platform-tools\adb.exe` and
+`%LOCALAPPDATA%\Android\Sdk\platform-tools\adb.exe`).
+
+| Tool | Body | What happens |
+|---|---|---|
+| `android_capabilities` | `{}` | Agent version, adb path/errors, devices, exposed tools |
+| `device_status` | `{}` | Lists connected devices (USB **or** TCP/IP) |
+| `device_connect` | `{"host":"192.168.1.50","port":5555}` | `adb connect` — pairs wirelessly |
+| `device_disconnect` | `{"host":"192.168.1.50"}` (host optional) | `adb disconnect` |
+| `device_info` | `{"serial":null}` | Model, manufacturer, Android version, resolution, battery |
+| `launch_app` | `{"package_name":"com.android.settings"}` | Launches an app |
+| `device_screenshot` | `{}` | Base64 PNG of the screen |
+| `device_tap` | `{"x":100,"y":200}` | Tap |
+| `device_type_text` | `{"text":"hello"}` | Types text |
+| `device_keyevent` | `{"keycode":4}` | Key event (3 HOME, 4 BACK, 26 POWER, 66 ENTER) |
+
+`serial` is optional everywhere — the first connected device is used.
+
+### Wireless setup (no USB needed after pairing)
+
+```bash
+# once, with the cable attached (or via Wireless debugging pairing on Android 11+)
+adb tcpip 5555
+# then unplug and connect over Wi-Fi
+adb connect 192.168.1.50:5555
+```
+
+From then on every `device_*` tool works cable-free; JARVIS can also run the
+connect step itself via `device_connect`.
+
+### Verify from the terminal
+
+```bash
+curl http://127.0.0.1:7337/health
+curl -X POST http://127.0.0.1:7337/tool/android_capabilities
+curl -X POST http://127.0.0.1:7337/tool/device_status -H "Content-Type: application/json" -d "{}"
+curl -X POST http://127.0.0.1:7337/tool/device_keyevent -H "Content-Type: application/json" -d "{\"keycode\":3}"
+```
+
+Add `-H "X-Nexus-Token: <your token>"` if you set `NEXUS_AGENT_TOKEN`.
+A `400` with an adb message means the routes are fine and adb/device needs
+attention; a `404` means the running process is stale — restart it.
+
+
 
 **Desktop OCR (REQUIRED for game launchers, custom canvases, Java apps like TLauncher).** Windows UI Automation cannot see custom-drawn buttons, so JARVIS falls back to OCR. Install the Tesseract OCR desktop app:
 - **Windows:** https://github.com/UB-Mannheim/tesseract/wiki — install to the default path, then restart the agent. JARVIS auto-locates `tesseract.exe` in `C:\Program Files\Tesseract-OCR\`.
