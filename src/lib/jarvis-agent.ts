@@ -46,6 +46,37 @@ export async function fetchAgent(path: string, init: RequestInit = {}) {
   throw lastError;
 }
 
+/** Reads /health, which reports the agent version and every registered tool. */
+export async function fetchAgentInfo(): Promise<{
+  agent_version?: string;
+  tools?: string[];
+  android?: string[];
+} | null> {
+  try {
+    const r = await fetchAgent("/health", { method: "GET", cache: "no-store" });
+    if (!r.ok) return null;
+    return (await r.json()) as { agent_version?: string; tools?: string[]; android?: string[] };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * A 404 from the agent almost always means the *running* process is an older
+ * build than the checkout on disk, so tell the user to restart it instead of
+ * surfacing a bare status code.
+ */
+async function staleAgentMessage(name: string): Promise<string> {
+  const info = await fetchAgentInfo();
+  const version = info?.agent_version ?? "unknown (pre-versioning build)";
+  const known = info?.tools?.includes(name);
+  const base = `ERROR: The local NEXUS agent has no /tool/${name} route. Running agent version: ${version}.`;
+  if (known) {
+    return `${base} The route exists but rejected this path — check the tool name spelling.`;
+  }
+  return `${base} This is a stale local agent: the tool exists in local-agent/jarvis_agent.py on disk but not in the process that is running. Stop the agent (Ctrl+C in its terminal), pull the latest project files (jarvis_agent.py AND android_manager.py must sit in the same folder), then run "python jarvis_agent.py" again. Verify with android_capabilities.`;
+}
+
 export async function executeTool(
   name: string,
   args: Record<string, unknown>,
@@ -67,6 +98,7 @@ export async function executeTool(
       signal: ctrl.signal,
     });
     const text = await r.text();
+    if (r.status === 404) return await staleAgentMessage(name);
     if (!r.ok) return `ERROR (${r.status}): ${text}`;
     return text;
   } catch (e) {
@@ -80,4 +112,5 @@ export async function executeTool(
     clearTimeout(timer);
   }
 }
+
 
