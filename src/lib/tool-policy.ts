@@ -77,6 +77,10 @@ const CATEGORY_BY_TOOL: Record<string, ToolCategory> = {
   device_type_text: "desktop",
   type_text: "desktop",
   device_keyevent: "desktop",
+  android_capabilities: "info",
+  device_connect: "info",
+  device_disconnect: "info",
+
 };
 
 export function toolCategory(name: string): ToolCategory {

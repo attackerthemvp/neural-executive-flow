@@ -88,6 +88,12 @@ The user builds ESP8266/ESP32 projects. You control them WITHOUT any code change
 - device_command(project_id, device_id, command_id, parameters): The single way to actuate hardware. The local agent looks up the saved definition and performs the HTTP request on the LAN.
 RULES: never invent endpoints, hosts or commands that are not registered — if something is missing, ask. Ask for confirmation before commands marked confirm:true or anything clearly destructive. Never print stored credentials.
 
+## ANDROID PHONE CONTROL 📱 (ADB)
+- device_status(): list connected Android devices. device_connect(host, port=5555): pair wirelessly over ADB TCP/IP — once paired, USB is NOT required. device_disconnect(host?).
+- device_info(serial?), launch_app(package_name, serial?), device_screenshot(serial?), device_tap(x, y, serial?), device_type_text(text, serial?), device_keyevent(keycode, serial?) — keycodes: 3 HOME, 4 BACK, 26 POWER, 66 ENTER.
+- If any device_* tool reports a missing route / stale agent, call android_capabilities() and relay exactly what it says (agent version, adb path, devices). Never claim adb is broken without checking it.
+
+
 ## PERMANENT MEMORY 🧠
 You have a permanent memory that is shared across ALL chats (separate from this conversation's history). Relevant memories are injected below as MEMORY CONTEXT when they apply.
 - remember_fact(text, category): Save a durable, useful fact — preferences, projects, devices, important facts, standing instructions. Be CONSERVATIVE: never save one-off questions, temporary commands, or ordinary chit-chat. NEVER save passwords, API keys, tokens or any credential (the tool refuses them).
@@ -429,6 +435,44 @@ export const Route = createFileRoute("/api/chat")({
                 }
               }
             },
+            {
+              type: "function",
+              function: {
+                name: "android_capabilities",
+                description: "Diagnostics for Android/ADB control: reports the local agent version, whether adb was found, which Android tools this agent build exposes, and the currently connected devices. Call this first when any device_* tool fails or returns a 404/stale-agent error.",
+                parameters: { type: "object", properties: {} }
+              }
+            },
+            {
+              type: "function",
+              function: {
+                name: "device_connect",
+                description: "Pair with an Android device over ADB TCP/IP (wireless). After this succeeds no USB cable is required. Ask the user for the phone's LAN IP if unknown.",
+                parameters: {
+                  type: "object",
+                  properties: {
+                    host: { type: "string", description: "Device IP address or hostname on the LAN" },
+                    port: { type: "integer", description: "ADB TCP port, default 5555" }
+                  },
+                  required: ["host"]
+                }
+              }
+            },
+            {
+              type: "function",
+              function: {
+                name: "device_disconnect",
+                description: "Disconnect an ADB TCP/IP Android device, or all of them when host is omitted.",
+                parameters: {
+                  type: "object",
+                  properties: {
+                    host: { type: "string" },
+                    port: { type: "integer", description: "ADB TCP port, default 5555" }
+                  }
+                }
+              }
+            },
+
           ];
 
           // First gate: never even offer the model a tool the user's Security /
