@@ -1,24 +1,34 @@
 """
-JARVIS Local Helper Agent
+NEXUS Local Helper Agent
 =========================
-A tiny FastAPI server that JARVIS (the web UI) calls to actually control
+A tiny FastAPI server that NEXUS (the web UI) calls to actually control
 your computer. It runs ENTIRELY on your machine — nothing is sent to the
-cloud beyond what JARVIS itself decides.
+cloud beyond what NEXUS itself decides.
 
 ⚠️  SECURITY WARNING ⚠️
 This agent will execute ANY shell command the web UI tells it to. Only run it
-on a machine you trust, only while you're using JARVIS, and never expose port
-7337 to the public internet. By default it binds to 127.0.0.1 only.
+on a machine you trust, only while you're using NEXUS, and never expose port
+7337 to the public internet.
+
+Binding
+-------
+By default it binds to 127.0.0.1. To let the NEXUS Android Agent reach it over
+Tailscale, set NEXUS_AGENT_HOST to your tailnet IP before starting:
+
+    set NEXUS_AGENT_HOST=100.104.193.77     (Windows)
+    export NEXUS_AGENT_HOST=100.104.193.77  (macOS/Linux)
 
 Setup
 -----
 1. pip install fastapi uvicorn
-2. python jarvis_agent.py
-3. Leave it running. Open the JARVIS web app — the "LOCAL AGENT" indicator
+2. python nexus_agent.py
+3. Leave it running. Open the NEXUS web app — the "LOCAL AGENT" indicator
    should turn cyan.
 
-Optional: set JARVIS_TOKEN env var to require an auth header (future).
+Set NEXUS_AGENT_TOKEN to require a shared secret (strongly recommended once the
+agent is reachable over the tailnet). The Android Agent sends the same value.
 """
+
 
 import os
 import sys
@@ -52,6 +62,11 @@ ANDROID_TOOLS = [
     "device_tap",
     "device_type_text",
     "device_keyevent",
+    # NEXUS Android Agent (on-device app over Tailscale, no ADB needed)
+    "phone_agent_status",
+    "phone_agent_command",
+    "phone_ping",
+    "phone_info",
 ]
 
 
@@ -243,9 +258,9 @@ def _import_pywinauto():
 
 CURSOR_OVERLAY_JS = r"""
 (() => {
-  if (window.__jarvisCursor) return;
+  if (window.__nexusCursor) return;
   const c = document.createElement('div');
-  c.id = '__jarvis_cursor';
+  c.id = '__nexus_cursor';
   c.style.cssText = [
     'position:fixed','left:-100px','top:-100px','width:22px','height:22px',
     'border-radius:50%','background:radial-gradient(circle,#ff2a2a 0%,#ff0000 50%,rgba(255,0,0,0) 80%)',
@@ -254,13 +269,13 @@ CURSOR_OVERLAY_JS = r"""
     'border:2px solid #fff'
   ].join(';');
   const label = document.createElement('div');
-  label.textContent = 'JARVIS';
+  label.textContent = 'NEXUS';
   label.style.cssText = 'position:absolute;left:26px;top:6px;font:bold 10px monospace;color:#fff;text-shadow:0 0 4px #ff0000;letter-spacing:2px;';
   c.appendChild(label);
   document.documentElement.appendChild(c);
-  window.__jarvisCursor = c;
-  window.__jarvisMove = (x,y) => { c.style.left = (x-11)+'px'; c.style.top = (y-11)+'px'; };
-  window.__jarvisFlash = () => {
+  window.__nexusCursor = c;
+  window.__nexusMove = (x,y) => { c.style.left = (x-11)+'px'; c.style.top = (y-11)+'px'; };
+  window.__nexusFlash = () => {
     c.animate([{transform:'scale(1)'},{transform:'scale(1.8)'},{transform:'scale(1)'}],{duration:300});
   };
 })();
@@ -324,7 +339,7 @@ def _inject_cursor(driver):
 def _move_cursor(driver, x: float, y: float):
     try:
         _inject_cursor(driver)
-        driver.execute_script("window.__jarvisMove && window.__jarvisMove(arguments[0], arguments[1])", float(x), float(y))
+        driver.execute_script("window.__nexusMove && window.__nexusMove(arguments[0], arguments[1])", float(x), float(y))
     except Exception:
         pass
 
@@ -332,7 +347,7 @@ def _move_cursor(driver, x: float, y: float):
 def _flash_cursor(driver):
     try:
         _inject_cursor(driver)
-        driver.execute_script("window.__jarvisFlash && window.__jarvisFlash()")
+        driver.execute_script("window.__nexusFlash && window.__nexusFlash()")
     except Exception:
         pass
 
@@ -600,7 +615,7 @@ def _match_desktop_target(text: str, nth: int = 0):
         )
     return matches[max(0, min(nth, len(matches) - 1))]
 
-app = FastAPI(title="JARVIS Local Agent")
+app = FastAPI(title="NEXUS Local Agent")
 
 # CORS — allow the web UI to call us from any origin (you control the browser).
 app.add_middleware(
@@ -611,12 +626,25 @@ app.add_middleware(
 )
 
 # Chrome's Private Network Access requires these headers so an HTTPS page
-# (the JARVIS web UI) is allowed to call http://127.0.0.1 / localhost.
+# (the NEXUS web UI) is allowed to call http://127.0.0.1 / localhost.
 # Optional shared-secret auth. Set NEXUS_AGENT_TOKEN before starting the agent
 # and paste the same value into NEXUS Settings -> Computer. When it is unset the
 # agent stays open (localhost only), which is the old behaviour.
 AGENT_TOKEN = (os.environ.get("NEXUS_AGENT_TOKEN") or "").strip()
 PUBLIC_PATHS = {"/health", "/docs", "/openapi.json"}
+
+
+def _token_ok(request: Request) -> bool:
+    """Accept the shared secret from any of the headers our clients send.
+
+    - X-Nexus-Token       : NEXUS web UI and NEXUS Android Agent
+    - Authorization: Bearer : NEXUS Android Agent fallback
+    """
+    candidates = [
+        request.headers.get("x-nexus-token", ""),
+        (request.headers.get("authorization", "") or "").removeprefix("Bearer ").strip(),
+    ]
+    return AGENT_TOKEN in [c for c in candidates if c]
 
 
 @app.middleware("http")
@@ -626,7 +654,7 @@ async def auth_and_private_network_access(request: Request, call_next):
     elif (
         AGENT_TOKEN
         and request.url.path not in PUBLIC_PATHS
-        and request.headers.get("x-nexus-token", "") != AGENT_TOKEN
+        and not _token_ok(request)
     ):
         resp = Response(
             status_code=401,
@@ -1553,7 +1581,7 @@ except Exception:  # pragma: no cover - keeps the agent alive if the file is mis
 
 def _esp():
     if esp_manager is None:
-        raise HTTPException(500, "esp_manager.py is missing next to jarvis_agent.py")
+        raise HTTPException(500, "esp_manager.py is missing next to nexus_agent.py")
     return esp_manager
 
 
@@ -1696,7 +1724,7 @@ def _get_android_manager():
     global _android_manager
     if AndroidManager is None:
         raise AndroidManagerError(
-            "android_manager.py is not available next to jarvis_agent.py "
+            "android_manager.py is not available next to nexus_agent.py "
             f"({_ANDROID_IMPORT_ERROR}). Pull the latest project files and restart the agent."
         )
     if _android_manager is None:
@@ -1849,17 +1877,209 @@ def tool_device_keyevent(arg: KeyeventArg):
     })
 
 
+# --------------------------------------------------------------------------- #
+# NEXUS Android Agent bridge
+# --------------------------------------------------------------------------- #
+# The Android Agent app (dev.nexus.androidagent) cannot be dialled into: phones
+# have no stable listening socket. So it dials *out* over Tailscale, long-polls
+# this agent for work, runs the command on the device and posts a structured
+# JSON result back. NEXUS AI drives it through /tool/phone_* below.
+#
+#   NEXUS AI -> this PC Agent  -> (Tailscale, long-poll) -> Android Agent
+#
+# Auth is the same NEXUS_AGENT_TOKEN as every other route (the /agent/* paths
+# are NOT in PUBLIC_PATHS, so the middleware enforces it). No shell is ever
+# exposed to the phone: the app only runs its own explicit capability allow-list.
 
+import uuid as _uuid
+
+_PHONE_LOCK = threading.Lock()
+_PHONE_AGENTS: dict[str, dict] = {}     # agent_id -> registration + liveness
+_PHONE_PENDING: list[dict] = []         # commands waiting to be polled
+_PHONE_RESULTS: dict[str, dict] = {}    # request_id -> result posted by phone
+_PHONE_EVENTS: dict[str, threading.Event] = {}
+_PHONE_POLL_MAX_WAIT = 30               # seconds a phone may hold a poll open
+_PHONE_RESULT_KEEP = 200                # cap on remembered results
+
+
+def _phone_prune() -> None:
+    if len(_PHONE_RESULTS) > _PHONE_RESULT_KEEP:
+        for rid in sorted(_PHONE_RESULTS, key=lambda r: _PHONE_RESULTS[r].get("received_at", 0))[:50]:
+            _PHONE_RESULTS.pop(rid, None)
+            _PHONE_EVENTS.pop(rid, None)
+
+
+def _phone_online(entry: dict) -> bool:
+    return (time.time() - float(entry.get("last_seen") or 0)) < 90
+
+
+@app.post("/agent/hello")
+async def agent_hello(request: Request):
+    """Registration from a NEXUS Android Agent."""
+    try:
+        payload = await request.json()
+    except Exception:
+        raise HTTPException(400, "malformed_json")
+    if not isinstance(payload, dict):
+        raise HTTPException(400, "malformed_json")
+    agent_id = str(payload.get("agent_id") or "unknown")[:64]
+    with _PHONE_LOCK:
+        _PHONE_AGENTS[agent_id] = {
+            "agent_id": agent_id,
+            "agent_kind": payload.get("agent_kind") or "android",
+            "protocol_version": payload.get("protocol_version"),
+            "app_version": payload.get("app_version"),
+            "device_model": payload.get("device_model"),
+            "android_release": payload.get("android_release"),
+            "android_sdk": payload.get("android_sdk"),
+            "capabilities": payload.get("capabilities") or [],
+            "registered_at": time.time(),
+            "last_seen": time.time(),
+        }
+    print(f"[nexus] android agent registered: {agent_id} "
+          f"({payload.get('device_model')} / Android {payload.get('android_release')})")
+    return {"ok": True, "agent_id": agent_id, "registered": True, "agent_version": AGENT_VERSION}
+
+
+@app.post("/agent/poll")
+async def agent_poll(request: Request):
+    """Long-poll: hand the phone any queued commands (or an empty list)."""
+    try:
+        payload = await request.json()
+    except Exception:
+        payload = {}
+    if not isinstance(payload, dict):
+        payload = {}
+    agent_id = str(payload.get("agent_id") or "unknown")[:64]
+    wait = max(0, min(_PHONE_POLL_MAX_WAIT, int(payload.get("wait") or 25)))
+    with _PHONE_LOCK:
+        entry = _PHONE_AGENTS.setdefault(agent_id, {"agent_id": agent_id, "agent_kind": "android"})
+        entry["last_seen"] = time.time()
+
+    deadline = time.time() + wait
+    while True:
+        with _PHONE_LOCK:
+            if _PHONE_PENDING:
+                batch = _PHONE_PENDING[:]
+                _PHONE_PENDING.clear()
+                return {"ok": True, "commands": batch}
+        if time.time() >= deadline:
+            return {"ok": True, "commands": []}
+        time.sleep(0.25)
+        with _PHONE_LOCK:
+            _PHONE_AGENTS[agent_id]["last_seen"] = time.time()
+
+
+@app.post("/agent/result")
+async def agent_result(request: Request):
+    """Structured result (success or error) coming back from the phone."""
+    try:
+        payload = await request.json()
+    except Exception:
+        raise HTTPException(400, "malformed_json")
+    if not isinstance(payload, dict):
+        raise HTTPException(400, "malformed_json")
+    rid = payload.get("request_id")
+    payload["received_at"] = time.time()
+    with _PHONE_LOCK:
+        agent_id = str(payload.get("agent_id") or "")
+        if agent_id in _PHONE_AGENTS:
+            _PHONE_AGENTS[agent_id]["last_seen"] = time.time()
+        if isinstance(rid, str) and rid:
+            _PHONE_RESULTS[rid] = payload
+            ev = _PHONE_EVENTS.get(rid)
+            if ev:
+                ev.set()
+        _phone_prune()
+    print(f"[nexus] android result <- {str(payload)[:300]}")
+    return {"ok": True}
+
+
+class PhoneCommandArg(BaseModel):
+    command: str
+    args: dict | None = None
+    # How long NEXUS waits for the phone to answer before giving up.
+    timeout_sec: int | None = None
+
+
+def _phone_dispatch(command: str, args: dict | None, timeout: int) -> dict:
+    rid = f"req-{_uuid.uuid4().hex[:12]}"
+    item = {"request_id": rid, "command": command, "args": args or {}}
+    ev = threading.Event()
+    with _PHONE_LOCK:
+        online = [a for a in _PHONE_AGENTS.values() if _phone_online(a)]
+        if not online:
+            raise HTTPException(
+                503,
+                "No NEXUS Android Agent is connected. Open the NEXUS Android Agent app "
+                "on the phone, point it at this PC's Tailscale address and press Start.",
+            )
+        _PHONE_EVENTS[rid] = ev
+        _PHONE_PENDING.append(item)
+    if not ev.wait(timeout):
+        with _PHONE_LOCK:
+            _PHONE_EVENTS.pop(rid, None)
+        raise HTTPException(504, f"Android Agent did not answer '{command}' within {timeout}s.")
+    with _PHONE_LOCK:
+        _PHONE_EVENTS.pop(rid, None)
+        result = _PHONE_RESULTS.get(rid) or {}
+    if result.get("ok") is False:
+        raise HTTPException(400, f"{result.get('error') or 'command_failed'}: {result.get('detail') or ''}".strip())
+    return {"ok": True, "command": command, "request_id": rid, "data": result.get("data") or {}}
+
+
+@app.post("/tool/phone_agent_status")
+@app.get("/tool/phone_agent_status")
+def tool_phone_agent_status():
+    """Which NEXUS Android Agents are connected, and what they can do."""
+    with _PHONE_LOCK:
+        agents = [
+            {**a, "online": _phone_online(a), "seconds_since_seen": round(time.time() - float(a.get("last_seen") or 0), 1)}
+            for a in _PHONE_AGENTS.values()
+        ]
+        queued = len(_PHONE_PENDING)
+    return {
+        "ok": True,
+        "agent_version": AGENT_VERSION,
+        "connected": any(a["online"] for a in agents),
+        "agents": agents,
+        "queued_commands": queued,
+        "notes": "This is the on-device NEXUS Android Agent app (no ADB / no USB). "
+                 "ADB-based device_* tools are separate.",
+    }
+
+
+@app.post("/tool/phone_agent_command")
+def tool_phone_agent_command(arg: PhoneCommandArg):
+    """Run one capability on the phone through the NEXUS Android Agent app."""
+    return _phone_dispatch(arg.command, arg.args, max(1, min(120, arg.timeout_sec or 30)))
+
+
+@app.post("/tool/phone_ping")
+@app.get("/tool/phone_ping")
+def tool_phone_ping():
+    """Liveness check against the phone itself."""
+    return _phone_dispatch("ping", {"echo": "nexus"}, 15)
+
+
+@app.post("/tool/phone_info")
+@app.get("/tool/phone_info")
+def tool_phone_info():
+    """Device model / Android version / ABIs reported by the phone app."""
+    return _phone_dispatch("device_info", {}, 15)
 
 
 if __name__ == "__main__":
     import uvicorn
     print("=" * 60)
-    print("  J.A.R.V.I.S. Local Agent")
-    print("  Listening on http://127.0.0.1:7337")
-    print("  Browser cowork: ask JARVIS to 'open a browser and...'")
-    print("  ESP/IoT: register projects in the web UI or by describing them to JARVIS.")
-    print("  Desktop cowork: ask JARVIS to inspect/click/type in desktop apps.")
-    print("  Keep this window open while using the JARVIS web UI.")
+    host = (os.environ.get("NEXUS_AGENT_HOST") or "127.0.0.1").strip()
+    port = int(os.environ.get("NEXUS_AGENT_PORT") or 7337)
+    print("  N.E.X.U.S. Local Agent")
+    print(f"  Listening on http://{host}:{port}")
+    print(f"  Android Agent bridge: /agent/hello|poll|result  (auth {'ON' if AGENT_TOKEN else 'OFF'})")
+    print("  Browser cowork: ask NEXUS to 'open a browser and...'")
+    print("  ESP/IoT: register projects in the web UI or by describing them to NEXUS.")
+    print("  Desktop cowork: ask NEXUS to inspect/click/type in desktop apps.")
+    print("  Keep this window open while using the NEXUS web UI.")
     print("=" * 60)
-    uvicorn.run(app, host="127.0.0.1", port=7337, log_level="info")
+    uvicorn.run(app, host=host, port=port, log_level="info")
