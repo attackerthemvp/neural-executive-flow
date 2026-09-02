@@ -88,8 +88,24 @@ The user builds ESP8266/ESP32 projects. You control them WITHOUT any code change
 - device_command(project_id, device_id, command_id, parameters): The single way to actuate hardware. The local agent looks up the saved definition and performs the HTTP request on the LAN.
 RULES: never invent endpoints, hosts or commands that are not registered — if something is missing, ask. Ask for confirmation before commands marked confirm:true or anything clearly destructive. Never print stored credentials.
 
-## ANDROID PHONE CONTROL 📱 (ADB)
-- device_status(): list connected Android devices. device_connect(host, port=5555): pair wirelessly over ADB TCP/IP — once paired, USB is NOT required. device_disconnect(host?).
+## ANDROID PHONE CONTROL 📱
+Real chain: you → NEXUS PC Agent (local agent) → NEXUS Android Agent app on the phone → the device.
+The NEXUS Android Agent is the PRIMARY Android path (no cable, no ADB). ADB is LEGACY FALLBACK.
+
+PRIMARY — NEXUS Android Agent (phone_* tools):
+- phone_agent_status(): which phones are registered, their model/Android version/capabilities, whether they are online ("connected"), and the queue depth. Use this to answer "is my Android connected/what's its status".
+- phone_ping(): liveness round-trip to the phone itself. Use for "ping my phone".
+- phone_info(): model / manufacturer / Android release / SDK / ABIs reported BY THE PHONE APP. Use for "info about my Android device".
+- phone_agent_command(command, args?, timeout_sec?): runs ONE capability from the phone app's allow-list. There is no shell on the phone. Get the exact capability names from phone_agent_status().agents[].capabilities first — never invent one. Unknown command → 400 unsupported_command; no phone → 503; phone silent → 504.
+
+ROUTING RULES (follow exactly):
+1. Any Android request → use the phone_* tool above. Never translate an Android request into ADB just to discover or inspect the device.
+2. Do NOT silently fall back to ADB when an Android Agent capability exists. Use the legacy ADB device_* tools only when (a) the user explicitly asks for ADB, or (b) phone_agent_status() shows no online agent / the capability is genuinely absent from the phone's allow-list AND ADB can legitimately do it — and say which path you used and why.
+3. Report the VERIFIED state from tool output. Never claim a phone is connected or a command succeeded without a tool result. Distinguish these states and keep them separate: NEXUS (you) online · PC Agent reachable (local agent) · Android Agent registered/online · Android device available · command executed. Report them as returned, e.g. "PC Agent: LINKED · Android Agent: CONNECTED (Pixel 8, Android 15) · command: OK".
+4. On an error, keep the real detail (503 not connected / 504 no answer / 400 unsupported_command) and explain it in one line, with the concrete fix (open the NEXUS Android Agent app, point it at the PC's Tailscale address + token, press Start).
+
+LEGACY FALLBACK — ADB (device_* tools, requires adb on the PC):
+- device_status(): list ADB-connected devices. device_connect(host, port=5555): pair over ADB TCP/IP — once paired, USB is NOT required. device_disconnect(host?).
 - device_info(serial?), launch_app(package_name, serial?), device_screenshot(serial?), device_tap(x, y, serial?), device_type_text(text, serial?), device_keyevent(keycode, serial?) — keycodes: 3 HOME, 4 BACK, 26 POWER, 66 ENTER.
 - If any device_* tool reports a missing route / stale agent, call android_capabilities() and relay exactly what it says (agent version, adb path, devices). Never claim adb is broken without checking it.
 
@@ -469,6 +485,49 @@ export const Route = createFileRoute("/api/chat")({
                     host: { type: "string" },
                     port: { type: "integer", description: "ADB TCP port, default 5555" }
                   }
+                }
+              }
+            },
+
+            // NEXUS Android Agent (on-device app, via the PC Agent over Tailscale).
+            // PRIMARY Android path — no ADB, no USB.
+            {
+              type: "function",
+              function: {
+                name: "phone_agent_status",
+                description: "PRIMARY Android status check. Reports every NEXUS Android Agent registered with the PC Agent: online flag, device model, Android release/SDK, app version, its capability allow-list, seconds since last seen, and queued command count. Use this (never ADB) to determine whether an Android device is connected and what it can do.",
+                parameters: { type: "object", properties: {} }
+              }
+            },
+            {
+              type: "function",
+              function: {
+                name: "phone_ping",
+                description: "PRIMARY Android liveness check: round-trip ping to the phone through the NEXUS Android Agent app. Returns pong data on success, 503 when no phone is connected, 504 when the phone does not answer in time.",
+                parameters: { type: "object", properties: {} }
+              }
+            },
+            {
+              type: "function",
+              function: {
+                name: "phone_info",
+                description: "PRIMARY Android device information: model, manufacturer, Android release, SDK level and ABIs as reported by the NEXUS Android Agent app on the phone itself (no ADB).",
+                parameters: { type: "object", properties: {} }
+              }
+            },
+            {
+              type: "function",
+              function: {
+                name: "phone_agent_command",
+                description: "Run ONE capability on the phone through the NEXUS Android Agent app. Only names in that phone's capability allow-list work (call phone_agent_status first to read them) — there is no shell on the phone. Errors: 400 unsupported_command, 503 no phone connected, 504 phone did not answer.",
+                parameters: {
+                  type: "object",
+                  properties: {
+                    command: { type: "string", description: "Capability name from the phone's advertised capabilities list" },
+                    args: { type: "object", description: "Arguments for that capability, as defined by the Android Agent app" },
+                    timeout_sec: { type: "integer", description: "How long to wait for the phone (1-120, default 30)" }
+                  },
+                  required: ["command"]
                 }
               }
             },
