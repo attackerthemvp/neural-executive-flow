@@ -74,7 +74,7 @@ async function staleAgentMessage(name: string): Promise<string> {
   if (known) {
     return `${base} The route exists but rejected this path — check the tool name spelling.`;
   }
-  return `${base} This is a stale local agent: the tool exists in local-agent/jarvis_agent.py on disk but not in the process that is running. Stop the agent (Ctrl+C in its terminal), pull the latest project files (jarvis_agent.py AND android_manager.py must sit in the same folder), then run "python jarvis_agent.py" again. Verify with android_capabilities.`;
+  return `${base} This is a stale local agent: the tool exists in local-agent/nexus_agent.py on disk but not in the process that is running. Stop the agent (Ctrl+C in its terminal), pull the latest project files (nexus_agent.py, android_manager.py AND esp_manager.py must sit in the same folder), then run "python nexus_agent.py" again. Verify with android_capabilities (ADB) or phone_agent_status (NEXUS Android Agent).`;
 }
 
 export async function executeTool(
