@@ -489,6 +489,49 @@ export const Route = createFileRoute("/api/chat")({
               }
             },
 
+            // NEXUS Android Agent (on-device app, via the PC Agent over Tailscale).
+            // PRIMARY Android path — no ADB, no USB.
+            {
+              type: "function",
+              function: {
+                name: "phone_agent_status",
+                description: "PRIMARY Android status check. Reports every NEXUS Android Agent registered with the PC Agent: online flag, device model, Android release/SDK, app version, its capability allow-list, seconds since last seen, and queued command count. Use this (never ADB) to determine whether an Android device is connected and what it can do.",
+                parameters: { type: "object", properties: {} }
+              }
+            },
+            {
+              type: "function",
+              function: {
+                name: "phone_ping",
+                description: "PRIMARY Android liveness check: round-trip ping to the phone through the NEXUS Android Agent app. Returns pong data on success, 503 when no phone is connected, 504 when the phone does not answer in time.",
+                parameters: { type: "object", properties: {} }
+              }
+            },
+            {
+              type: "function",
+              function: {
+                name: "phone_info",
+                description: "PRIMARY Android device information: model, manufacturer, Android release, SDK level and ABIs as reported by the NEXUS Android Agent app on the phone itself (no ADB).",
+                parameters: { type: "object", properties: {} }
+              }
+            },
+            {
+              type: "function",
+              function: {
+                name: "phone_agent_command",
+                description: "Run ONE capability on the phone through the NEXUS Android Agent app. Only names in that phone's capability allow-list work (call phone_agent_status first to read them) — there is no shell on the phone. Errors: 400 unsupported_command, 503 no phone connected, 504 phone did not answer.",
+                parameters: {
+                  type: "object",
+                  properties: {
+                    command: { type: "string", description: "Capability name from the phone's advertised capabilities list" },
+                    args: { type: "object", description: "Arguments for that capability, as defined by the Android Agent app" },
+                    timeout_sec: { type: "integer", description: "How long to wait for the phone (1-120, default 30)" }
+                  },
+                  required: ["command"]
+                }
+              }
+            },
+
           ];
 
           // First gate: never even offer the model a tool the user's Security /
