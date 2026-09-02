@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { DEFAULT_SETTINGS } from "@/lib/settings-store";
-import { checkToolPolicy, isInsideWorkspace, pathArgsOf } from "@/lib/tool-policy";
+import { checkToolPolicy, isInsideWorkspace, pathArgsOf, toolCategory } from "@/lib/tool-policy";
 
 const base = () =>
   JSON.parse(JSON.stringify(DEFAULT_SETTINGS)) as typeof DEFAULT_SETTINGS;
@@ -60,5 +60,22 @@ describe("coding policy", () => {
     const s = base();
     s.coding.enabled = false;
     expect(checkToolPolicy("grep", { root: "/tmp", pattern: "x" }, s).allow).toBe(false);
+  });
+});
+
+describe("NEXUS Android Agent tools", () => {
+  it("allows the read-only phone tools by default", () => {
+    for (const t of ["phone_agent_status", "phone_ping", "phone_info"]) {
+      expect(checkToolPolicy(t, {}, base()).allow).toBe(true);
+      expect(toolCategory(t)).toBe("info");
+    }
+  });
+
+  it("treats phone_agent_command as device control gated by desktop permission", () => {
+    expect(toolCategory("phone_agent_command")).toBe("desktop");
+    const s = base();
+    expect(checkToolPolicy("phone_agent_command", { command: "ping" }, s).allow).toBe(true);
+    s.security.permissions.desktopControl = false;
+    expect(checkToolPolicy("phone_agent_command", { command: "ping" }, s).allow).toBe(false);
   });
 });
