@@ -81,6 +81,12 @@ const CATEGORY_BY_TOOL: Record<string, ToolCategory> = {
   device_connect: "info",
   device_disconnect: "info",
 
+  // NEXUS Android Agent (on-device app via the PC Agent) — primary Android path.
+  phone_agent_status: "info",
+  phone_ping: "info",
+  phone_info: "info",
+  phone_agent_command: "desktop",
+
 };
 
 export function toolCategory(name: string): ToolCategory {
