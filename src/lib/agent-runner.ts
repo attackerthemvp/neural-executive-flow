@@ -1,4 +1,5 @@
 import type { ChatMessage, ToolCallRecord } from "./chat-store";
+import { isRepeatSafeToolCall } from "./tool-policy";
 
 export const DEFAULT_MAX_AGENT_STEPS = 50;
 export const DEFAULT_MAX_RUN_MS = 15 * 60_000;
