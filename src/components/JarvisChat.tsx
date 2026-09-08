@@ -3,6 +3,7 @@ import ReactMarkdown from "react-markdown";
 import { ArcReactor } from "@/components/ArcReactor";
 import { ChatSidebar } from "@/components/ChatSidebar";
 import { checkAgentStatus, executeTool } from "@/lib/jarvis-agent";
+import { normalizePhoneCommandArgs, resolveAndroidApp } from "@/lib/android-apps";
 import { executeMemoryTool, isMemoryTool } from "@/lib/memory-tools";
 import { executeWebTool, isWebTool } from "@/lib/web-tools";
 import { relevantMemories } from "@/lib/memory-store";
