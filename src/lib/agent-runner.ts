@@ -279,6 +279,15 @@ export async function runAgent(options: AgentRunOptions): Promise<AgentRunResult
         }
       }
 
+      if (repeatSafe && !blocked) {
+        // State-aware: a repeat only counts against the guard when the world
+        // did not change (identical result to the previous identical call).
+        if (repeatStreak.lastResult === execution.content) repeatStreak.sameResults++;
+        else repeatStreak.sameResults = 0;
+        repeatStreak.lastResult = execution.content;
+      } else if (!repeatSafe) {
+        repeatStreak = { signature: "", count: 0, lastResult: undefined, sameResults: 0 };
+      }
 
       records.push({ name, args, result: execution.content });
       history = [
