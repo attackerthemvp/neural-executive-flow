@@ -161,7 +161,7 @@ export type AppResolution = {
   /** Ordered candidate packages (first = preferred). Empty when unknown. */
   candidates: string[];
   /** Candidates that appear in `installed`, when an installed list was given. */
-  installed?: string[];
+  installed?: string[] | undefined;
   /** The package to use, or null when it cannot be decided safely. */
   resolved: string | null;
   exact: boolean;
@@ -260,7 +260,7 @@ export const ANDROID_REPEAT_SAFE_COMMANDS = new Set([
 export function normalizePhoneCommandArgs(
   command: string,
   args: Record<string, unknown> | undefined,
-): { args: Record<string, unknown>; note?: string } {
+): { args: Record<string, unknown>; note?: string | undefined } {
   const a: Record<string, unknown> = { ...(args ?? {}) };
   if (command !== "open_app") return { args: a };
 
