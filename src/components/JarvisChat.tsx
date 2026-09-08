@@ -291,6 +291,40 @@ export function JarvisChat({
               args["timeout_sec"] == null
             )
               args = { ...args, timeout_sec: cfg.commandTimeoutSec };
+
+            // Android app-name → package lookup runs locally (single mapping, no agent needed).
+            if (fname === "android_app_lookup") {
+              const name = typeof args["name"] === "string" ? args["name"] : "";
+              const installed = Array.isArray(args["installed_packages"])
+                ? (args["installed_packages"] as unknown[]).filter((p): p is string => typeof p === "string")
+                : undefined;
+              const r = resolveAndroidApp(name, installed);
+              logAgent({ kind: "tool", label: fname, args, ok: true, detail: JSON.stringify(r).slice(0, 600) });
+              return {
+                content: JSON.stringify({
+                  ...r,
+                  hint: !r.candidates.length
+                    ? "Unknown app. Ask the user for the package id or check list_apps on the phone."
+                    : r.resolved
+                      ? `Use phone_agent_command {"command":"open_app","args":{"package":"${r.resolved}"}}, then verify with foreground_app / wait_for_app.`
+                      : installed
+                        ? "None of the known variants is installed on this phone."
+                        : "Several variants exist — run list_apps and call android_app_lookup again with installed_packages to pick the installed one.",
+                }),
+              };
+            }
+            // Enforce the verified Android Agent argument schema (open_app → {package}).
+            let phoneNote: string | undefined;
+            if (fname === "phone_agent_command" && typeof args["command"] === "string") {
+              const fixed = normalizePhoneCommandArgs(
+                args["command"],
+                args["args"] && typeof args["args"] === "object" ? (args["args"] as Record<string, unknown>) : undefined,
+              );
+              if (fixed.note) {
+                phoneNote = fixed.note;
+                args = { ...args, args: fixed.args };
+              }
+            }
             // Security / Computer / Devices / Memory / Coding settings are enforced here.
             const decision = checkToolPolicy(fname, args, settingsRef.current);
             if (settingsRef.current.advanced.debugLogging)
