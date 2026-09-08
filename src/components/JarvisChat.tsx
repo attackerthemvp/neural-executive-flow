@@ -361,7 +361,7 @@ export function JarvisChat({
               durationMs: Date.now() - startedAt,
               detail: result.slice(0, 600),
             });
-            let content = result;
+            let content = phoneNote ? `[schema note] ${phoneNote}\n${result}` : result;
             let attachment: Msg | undefined;
             try {
               const parsed = JSON.parse(result);
