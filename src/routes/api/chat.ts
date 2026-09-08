@@ -4,6 +4,7 @@ import { NEXUS_PERSONA } from "@/lib/ai/persona";
 import { routeChat } from "@/lib/ai/router";
 import { mergeSettings } from "@/lib/settings-store";
 import { isToolAllowedBySettings } from "@/lib/tool-policy";
+import { ANDROID_INTENT_RULES } from "@/lib/android-apps";
 
 
 const SYSTEM_PROMPT = `${NEXUS_PERSONA}
@@ -103,6 +104,8 @@ ROUTING RULES (follow exactly):
 2. Do NOT silently fall back to ADB when an Android Agent capability exists. Use the legacy ADB device_* tools only when (a) the user explicitly asks for ADB, or (b) phone_agent_status() shows no online agent / the capability is genuinely absent from the phone's allow-list AND ADB can legitimately do it — and say which path you used and why.
 3. Report the VERIFIED state from tool output. Never claim a phone is connected or a command succeeded without a tool result. Distinguish these states and keep them separate: NEXUS (you) online · PC Agent reachable (local agent) · Android Agent registered/online · Android device available · command executed. Report them as returned, e.g. "PC Agent: LINKED · Android Agent: CONNECTED (Pixel 8, Android 15) · command: OK".
 4. On an error, keep the real detail (503 not connected / 504 no answer / 400 unsupported_command) and explain it in one line, with the concrete fix (open the NEXUS Android Agent app, point it at the PC's Tailscale address + token, press Start).
+
+${ANDROID_INTENT_RULES}
 
 LEGACY FALLBACK — ADB (device_* tools, requires adb on the PC):
 - device_status(): list ADB-connected devices. device_connect(host, port=5555): pair over ADB TCP/IP — once paired, USB is NOT required. device_disconnect(host?).

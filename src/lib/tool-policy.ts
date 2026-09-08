@@ -3,6 +3,7 @@
 // before it is executed, so the Security, Computer, Devices and Memory
 // settings have REAL effect (blocked calls return an error to the model).
 import type { NexusSettings } from "@/lib/settings-store";
+import { ANDROID_REPEAT_SAFE_COMMANDS } from "@/lib/android-apps";
 
 export type ToolCategory =
   | "read_files"
@@ -86,8 +87,52 @@ const CATEGORY_BY_TOOL: Record<string, ToolCategory> = {
   phone_ping: "info",
   phone_info: "info",
   phone_agent_command: "desktop",
+  android_app_lookup: "info",
 
 };
+
+/**
+ * Tools whose repetition is harmless: pure reads, status checks and
+ * "go to a stable state" actions. The agent loop guard only blocks these when
+ * they repeat back-to-back with an unchanged result (a genuine stuck loop).
+ */
+const REPEAT_SAFE_TOOLS = new Set([
+  "phone_agent_status",
+  "phone_ping",
+  "phone_info",
+  "android_app_lookup",
+  "android_capabilities",
+  "device_status",
+  "device_info",
+  "device_screenshot",
+  "screenshot",
+  "desktop_read",
+  "desktop_screenshot",
+  "browser_read",
+  "system_info",
+  "esp_status",
+  "esp_list_projects",
+  "esp_get_project",
+  "command_status",
+  "git_status",
+  "git_diff",
+  "list_dir",
+  "read_file",
+  "recall_memories",
+]);
+
+export function isRepeatSafeToolCall(name: string, args: Record<string, unknown>): boolean {
+  if (REPEAT_SAFE_TOOLS.has(name)) return true;
+  if (name === "phone_agent_command") {
+    const cmd = typeof args["command"] === "string" ? args["command"] : "";
+    return ANDROID_REPEAT_SAFE_COMMANDS.has(cmd);
+  }
+  if (name === "device_keyevent") {
+    const k = args["keycode"];
+    return k === 3 || k === 4 || k === "3" || k === "4"; // HOME / BACK
+  }
+  return false;
+}
 
 export function toolCategory(name: string): ToolCategory {
   return CATEGORY_BY_TOOL[name] ?? "info";

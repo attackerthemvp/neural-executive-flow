@@ -1,4 +1,5 @@
 import type { ChatMessage, ToolCallRecord } from "./chat-store";
+import { isRepeatSafeToolCall } from "./tool-policy";
 
 export const DEFAULT_MAX_AGENT_STEPS = 50;
 export const DEFAULT_MAX_RUN_MS = 15 * 60_000;
@@ -54,6 +55,8 @@ export type AgentRunOptions = {
   /** Lets the UI cancel a run (Stop button). */
   signal?: AbortSignal;
   now?: () => number;
+  /** Override for which calls may repeat freely (defaults to tool-policy's list). */
+  isRepeatSafe?: (name: string, args: Record<string, unknown>) => boolean;
 };
 
 
@@ -102,6 +105,12 @@ export async function runAgent(options: AgentRunOptions): Promise<AgentRunResult
   const now = options.now ?? Date.now;
   const startedAt = now();
   const callCounts = new Map<string, number>();
+  let repeatStreak: { signature: string; count: number; lastResult: string | undefined; sameResults: number } = {
+    signature: "",
+    count: 0,
+    lastResult: undefined,
+    sameResults: 0,
+  };
   let history = [...options.initialHistory];
   let usedOperationalTool = false;
   let emptyReplies = 0;
@@ -239,12 +248,26 @@ export async function runAgent(options: AgentRunOptions): Promise<AgentRunResult
       options.onStatus?.(`Step ${step}: running ${name}`);
 
       const signature = `${name}:${JSON.stringify(args)}`;
-      const count = (callCounts.get(signature) ?? 0) + 1;
-      callCounts.set(signature, count);
+      const repeatSafe = (options.isRepeatSafe ?? isRepeatSafeToolCall)(name, args);
+      let blocked = false;
+      if (repeatSafe) {
+        // Harmless repeats (home, status/state checks) are allowed. Only a
+        // back-to-back streak of the same call returning the same result is a
+        // genuine stuck loop.
+        if (repeatStreak.signature === signature) repeatStreak.count++;
+        else repeatStreak = { signature, count: 1, lastResult: undefined, sameResults: 0 };
+        blocked = repeatStreak.sameResults >= maxIdenticalCalls;
+      } else {
+        const count = (callCounts.get(signature) ?? 0) + 1;
+        callCounts.set(signature, count);
+        blocked = count > maxIdenticalCalls;
+      }
       let execution: ToolExecution;
-      if (count > maxIdenticalCalls) {
+      if (blocked) {
         execution = {
-          content: `ERROR: Repeated identical tool call blocked after ${maxIdenticalCalls} executions. Diagnose the loop and use a different action or report a blocker.`,
+          content: repeatSafe
+            ? `ERROR: ${name} was repeated ${repeatStreak.sameResults + 1} times in a row with an unchanged result. The state is not changing — stop re-checking, use a different action, or report the blocker.`
+            : `ERROR: Repeated identical tool call blocked after ${maxIdenticalCalls} executions. Diagnose the loop and use a different action or report a blocker.`,
         };
       } else {
         // A tool must never hang the run: cap it and surface a readable error the
@@ -262,6 +285,15 @@ export async function runAgent(options: AgentRunOptions): Promise<AgentRunResult
         }
       }
 
+      if (repeatSafe && !blocked) {
+        // State-aware: a repeat only counts against the guard when the world
+        // did not change (identical result to the previous identical call).
+        if (repeatStreak.lastResult === execution.content) repeatStreak.sameResults++;
+        else repeatStreak.sameResults = 0;
+        repeatStreak.lastResult = execution.content;
+      } else if (!repeatSafe) {
+        repeatStreak = { signature: "", count: 0, lastResult: undefined, sameResults: 0 };
+      }
 
       records.push({ name, args, result: execution.content });
       history = [
