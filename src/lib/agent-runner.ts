@@ -105,6 +105,12 @@ export async function runAgent(options: AgentRunOptions): Promise<AgentRunResult
   const now = options.now ?? Date.now;
   const startedAt = now();
   const callCounts = new Map<string, number>();
+  let repeatStreak: { signature: string; count: number; lastResult: string | undefined; sameResults: number } = {
+    signature: "",
+    count: 0,
+    lastResult: undefined,
+    sameResults: 0,
+  };
   let history = [...options.initialHistory];
   let usedOperationalTool = false;
   let emptyReplies = 0;
