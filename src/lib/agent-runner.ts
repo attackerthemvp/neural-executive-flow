@@ -239,12 +239,26 @@ export async function runAgent(options: AgentRunOptions): Promise<AgentRunResult
       options.onStatus?.(`Step ${step}: running ${name}`);
 
       const signature = `${name}:${JSON.stringify(args)}`;
-      const count = (callCounts.get(signature) ?? 0) + 1;
-      callCounts.set(signature, count);
+      const repeatSafe = (options.isRepeatSafe ?? isRepeatSafeToolCall)(name, args);
+      let blocked = false;
+      if (repeatSafe) {
+        // Harmless repeats (home, status/state checks) are allowed. Only a
+        // back-to-back streak of the same call returning the same result is a
+        // genuine stuck loop.
+        if (repeatStreak.signature === signature) repeatStreak.count++;
+        else repeatStreak = { signature, count: 1, lastResult: undefined, sameResults: 0 };
+        blocked = repeatStreak.sameResults >= maxIdenticalCalls;
+      } else {
+        const count = (callCounts.get(signature) ?? 0) + 1;
+        callCounts.set(signature, count);
+        blocked = count > maxIdenticalCalls;
+      }
       let execution: ToolExecution;
-      if (count > maxIdenticalCalls) {
+      if (blocked) {
         execution = {
-          content: `ERROR: Repeated identical tool call blocked after ${maxIdenticalCalls} executions. Diagnose the loop and use a different action or report a blocker.`,
+          content: repeatSafe
+            ? `ERROR: ${name} was repeated ${repeatStreak.sameResults + 1} times in a row with an unchanged result. The state is not changing — stop re-checking, use a different action, or report the blocker.`
+            : `ERROR: Repeated identical tool call blocked after ${maxIdenticalCalls} executions. Diagnose the loop and use a different action or report a blocker.`,
         };
       } else {
         // A tool must never hang the run: cap it and surface a readable error the
