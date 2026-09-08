@@ -3,6 +3,7 @@
 // before it is executed, so the Security, Computer, Devices and Memory
 // settings have REAL effect (blocked calls return an error to the model).
 import type { NexusSettings } from "@/lib/settings-store";
+import { ANDROID_REPEAT_SAFE_COMMANDS } from "@/lib/android-apps";
 
 export type ToolCategory =
   | "read_files"
