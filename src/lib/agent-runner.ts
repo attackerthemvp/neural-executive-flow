@@ -55,6 +55,8 @@ export type AgentRunOptions = {
   /** Lets the UI cancel a run (Stop button). */
   signal?: AbortSignal;
   now?: () => number;
+  /** Override for which calls may repeat freely (defaults to tool-policy's list). */
+  isRepeatSafe?: (name: string, args: Record<string, unknown>) => boolean;
 };
 
 
