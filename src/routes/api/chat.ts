@@ -4,6 +4,7 @@ import { NEXUS_PERSONA } from "@/lib/ai/persona";
 import { routeChat } from "@/lib/ai/router";
 import { mergeSettings } from "@/lib/settings-store";
 import { isToolAllowedBySettings } from "@/lib/tool-policy";
+import { ANDROID_INTENT_RULES } from "@/lib/android-apps";
 
 
 const SYSTEM_PROMPT = `${NEXUS_PERSONA}
