@@ -12,8 +12,10 @@ type AppEntry = { names: string[]; packages: string[] };
 
 const APPS: AppEntry[] = [
   // --- System / OEM (Samsung first, then Google, then AOSP) ---
+  // On this Samsung device the dialer lives inside the contacts package
+  // (verified on-device); keep it first so NEXUS never guesses *.dialer.
   { names: ["phone", "dialer", "phone app", "call app", "samsung phone", "google phone", "google dialer"],
-    packages: ["com.samsung.android.dialer", "com.samsung.android.contacts", "com.google.android.dialer", "com.android.dialer"] },
+    packages: ["com.samsung.android.contacts", "com.samsung.android.dialer", "com.google.android.dialer", "com.android.dialer"] },
   { names: ["contacts", "samsung contacts", "google contacts", "people"],
     packages: ["com.samsung.android.contacts", "com.google.android.contacts", "com.android.contacts"] },
   { names: ["gallery", "samsung gallery", "photos app"], packages: ["com.sec.android.gallery3d"] },
@@ -35,6 +37,7 @@ const APPS: AppEntry[] = [
   { names: ["nexus android agent", "nexus agent", "android agent", "nexus app"], packages: ["dev.nexus.androidagent"] },
 
   // --- Google ---
+  { names: ["janitor ai", "janitor", "janitorai"], packages: ["com.janitor.ai"] },
   { names: ["youtube", "yt"], packages: ["com.google.android.youtube"] },
   { names: ["youtube music", "yt music", "ytm"], packages: ["com.google.android.apps.youtube.music"] },
   { names: ["youtube studio", "yt studio"], packages: ["com.google.android.apps.youtube.creator"] },
