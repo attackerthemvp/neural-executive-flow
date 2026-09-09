@@ -92,7 +92,7 @@ describe("runAgent", () => {
       maxIdenticalCalls: 2,
       callModel: async () => {
         modelCalls++;
-        if (modelCalls <= 4) return response("", [{ id: String(modelCalls), name: "read_file", args: { path: "same.py" } }]);
+        if (modelCalls <= 4) return response("", [{ id: String(modelCalls), name: "write_file", args: { path: "same.py" } }]);
         return response("", [{ id: "done", name: "finish_task", args: { report: "Loop handled." } }]);
       },
       executeTool: async () => {
@@ -103,6 +103,58 @@ describe("runAgent", () => {
     expect(result.status).toBe("completed");
     expect(executions).toBe(2);
     expect(result.history.some((m) => typeof m.content === "string" && m.content.includes("Repeated identical"))).toBe(true);
+  });
+
+  test("allows harmless repeated Android actions while state keeps changing", async () => {
+    let modelCalls = 0;
+    let executions = 0;
+    const result = await runAgent({
+      initialHistory: start,
+      maxIdenticalCalls: 2,
+      callModel: async () => {
+        modelCalls++;
+        if (modelCalls <= 6)
+          return response("", [
+            { id: String(modelCalls), name: "phone_agent_command", args: { command: "home" } },
+          ]);
+        return response("", [{ id: "done", name: "finish_task", args: { report: "Done." } }]);
+      },
+      executeTool: async () => {
+        executions++;
+        return { content: `ok ${executions}` };
+      },
+    });
+    expect(result.status).toBe("completed");
+    expect(executions).toBe(6);
+    expect(
+      result.history.some((m) => typeof m.content === "string" && m.content.includes("Repeated identical")),
+    ).toBe(false);
+  });
+
+  test("still stops a repeat-safe call that keeps returning the same result", async () => {
+    let modelCalls = 0;
+    let executions = 0;
+    const result = await runAgent({
+      initialHistory: start,
+      maxIdenticalCalls: 2,
+      callModel: async () => {
+        modelCalls++;
+        if (modelCalls <= 8)
+          return response("", [{ id: String(modelCalls), name: "phone_agent_status", args: {} }]);
+        return response("", [{ id: "done", name: "finish_task", args: { report: "Reported blocker." } }]);
+      },
+      executeTool: async () => {
+        executions++;
+        return { content: "unchanged" };
+      },
+    });
+    expect(result.status).toBe("completed");
+    expect(executions).toBe(3);
+    expect(
+      result.history.some(
+        (m) => typeof m.content === "string" && m.content.includes("unchanged result"),
+      ),
+    ).toBe(true);
   });
 
   test("preserves tool errors so the model can investigate", async () => {
