@@ -527,13 +527,33 @@ export const Route = createFileRoute("/api/chat")({
                   type: "object",
                   properties: {
                     command: { type: "string", description: "Capability name from the phone's advertised capabilities list" },
-                    args: { type: "object", description: "Arguments for that capability, as defined by the Android Agent app" },
+                    args: { type: "object", description: "Arguments for that capability. Verified: open_app takes {package} (NOT package_name); home/back/device_info take {}; ping takes {echo?}." },
                     timeout_sec: { type: "integer", description: "How long to wait for the phone (1-120, default 30)" }
                   },
                   required: ["command"]
                 }
               }
             },
+            {
+              type: "function",
+              function: {
+                name: "android_app_lookup",
+                description: "Resolve a spoken Android app name or alias (\"YT\", \"IG\", \"the browser\", \"Play Store\", \"WhatsApp\") to candidate package ids from NEXUS's single app mapping. Runs locally, no phone needed. Pass installed_packages (from the phone's list_apps capability) when several OEM/Google variants exist so the installed one is chosen instead of a guess. Use the result as the {package} value for open_app.",
+                parameters: {
+                  type: "object",
+                  properties: {
+                    name: { type: "string", description: "App name, alias, or an existing package id" },
+                    installed_packages: {
+                      type: "array",
+                      items: { type: "string" },
+                      description: "Optional package list from list_apps on the phone, used to pick the installed variant"
+                    }
+                  },
+                  required: ["name"]
+                }
+              }
+            },
+
 
           ];
 
