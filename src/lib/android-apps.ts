@@ -12,8 +12,10 @@ type AppEntry = { names: string[]; packages: string[] };
 
 const APPS: AppEntry[] = [
   // --- System / OEM (Samsung first, then Google, then AOSP) ---
+  // On this Samsung device the dialer lives inside the contacts package
+  // (verified on-device); keep it first so NEXUS never guesses *.dialer.
   { names: ["phone", "dialer", "phone app", "call app", "samsung phone", "google phone", "google dialer"],
-    packages: ["com.samsung.android.dialer", "com.samsung.android.contacts", "com.google.android.dialer", "com.android.dialer"] },
+    packages: ["com.samsung.android.contacts", "com.samsung.android.dialer", "com.google.android.dialer", "com.android.dialer"] },
   { names: ["contacts", "samsung contacts", "google contacts", "people"],
     packages: ["com.samsung.android.contacts", "com.google.android.contacts", "com.android.contacts"] },
   { names: ["gallery", "samsung gallery", "photos app"], packages: ["com.sec.android.gallery3d"] },
@@ -35,6 +37,7 @@ const APPS: AppEntry[] = [
   { names: ["nexus android agent", "nexus agent", "android agent", "nexus app"], packages: ["dev.nexus.androidagent"] },
 
   // --- Google ---
+  { names: ["janitor ai", "janitor", "janitorai"], packages: ["com.janitor.ai"] },
   { names: ["youtube", "yt"], packages: ["com.google.android.youtube"] },
   { names: ["youtube music", "yt music", "ytm"], packages: ["com.google.android.apps.youtube.music"] },
   { names: ["youtube studio", "yt studio"], packages: ["com.google.android.apps.youtube.creator"] },
@@ -250,6 +253,8 @@ export const ANDROID_REPEAT_SAFE_COMMANDS = new Set([
   "wait_for_app",
   "wait_for_element",
   "wait_for_text",
+  "recents",
+  "recent_apps",
 ]);
 
 /**
@@ -295,19 +300,28 @@ export const ANDROID_INTENT_RULES = `ANDROID CAPABILITY ARGUMENTS (verified — 
 - home → {} · back → {} · ping → {"echo"?: string} · device_info → {}
 - For every other capability (close_app, foreground_app, list_apps, screen_read, find_element, click_element, set_element_text, scroll, wait_for_app, wait_for_element, wait_for_text, …): use only names that appear in phone_agent_status().agents[].capabilities. If a call returns 400 with a missing/invalid-argument detail, read the detail and correct the argument NAME — never retry the same guess.
 
-APP NAME → PACKAGE:
+APP NAME → PACKAGE (act, do not interview the user):
 - Call android_app_lookup(name) to turn a spoken app name ("YT", "IG", "the browser", "Play Store") into candidate package ids. It is the ONLY mapping; do not recall package names from memory when the lookup knows the app.
-- When the lookup returns more than one candidate (OEM/Google variants), run list_apps (if the phone advertises it) and pass its package list to android_app_lookup(name, installed_packages) so the installed variant is chosen. Never open a guessed package when an installed match can be checked.
-- If nothing is installed for that app, say so — do not open a different app.
+- When the lookup returns a "resolved" package, USE IT IMMEDIATELY. Do not ask the user to choose between candidates, and do not ask which app they meant — the extra candidates are OEM variants, not a real ambiguity. Only the first attempt failing (open_app error, or foreground_app showing a different app) justifies trying the next candidate.
+- NEVER invent, guess or improvise a package id, and never use a placeholder like com.example.*. If the lookup knows nothing and list_apps does not show the app, ask the user for the package id — that is a genuine blocker.
+- list_apps on this device is INCOMPLETE: it omits many system and preinstalled apps (YouTube, for example). An app missing from list_apps is NOT proof it is absent. If a lookup-resolved package exists, just try open_app and judge by the result; never tell the user an app is not installed based only on list_apps.
 
-INTENT SEMANTICS:
+INTENT SEMANTICS (these are different Android operations — never conflate them):
 - "open / launch / start X" → open_app.
-- "go home / home screen / return home" → home.
-- "go back / back" → back.
-- "close / exit / leave X" (normal wording) → home (move it out of the foreground). Say "moved to the background", never "terminated" or "closed the process".
+- "open recent apps / recents / app switcher / multitasking" → the recents capability (check phone_agent_status().agents[].capabilities for its exact name, e.g. recents). That shows the Recents UI; it is not open_app.
+- "switch to X (it's in the background) / go back to X from recents" → open Recents, then locate X's card with screen_read / find_element and click_element to activate the existing task. Say "switched to X", not "launched X". If the recents card cannot be found, say so and only then offer open_app as a normal launch — and label it as a relaunch, not a switch.
+- "go home / home screen / return home" → home. "go back / back" → back.
+- "close / exit / leave X" (normal wording) → home (move it out of the foreground). Say "moved to the background", never "terminated", "killed" or "force-stopped".
 - Actual termination (force-stop / kill / terminate) ONLY when the user explicitly asks for it AND a matching capability (e.g. close_app) is in the phone's list. Otherwise explain that the app was only backgrounded.
 
-VERIFY BEFORE CLAIMING:
-- After open_app, confirm with foreground_app or wait_for_app when those capabilities exist; after UI actions use wait_for_element / wait_for_text / screen_read. Report what the verification returned.
-- An "ok": true from open_app means the intent was fired, not that the app is on screen. Only say "X is open" when foreground_app / wait_for_app confirms it; otherwise say "launch sent, not yet verified".
-- Repeating home / status / foreground_app / wait_for_* checks is fine; repeating an action that already failed the same way is not — change approach or report the blocker.`;
+VERIFICATION — five distinct states, keep them apart:
+1. action attempted · 2. Android Agent reported success · 3. state independently verified (foreground_app / wait_for_app agrees) · 4. verification data unavailable or inconclusive · 5. action failed (agent reported an error).
+- After open_app or a recents switch, verify once with wait_for_app or foreground_app when the phone advertises them.
+- foreground_app on this device sometimes returns null/empty package or class. That is state 4, NOT state 5. Inconclusive verification must NEVER cause you to repeat the action, restart the workflow, or wait for a new instruction. Retry the check at most once, then finish the task and report honestly: "the agent reported the launch succeeded; foreground_app returned no package, so I could not independently confirm it".
+- Only claim "X is on screen / verified" when a check actually returned X. Only say the action failed when a tool reported an error.
+
+COMPLETION:
+- Simple Android commands are one-shot tasks: resolve → act → verify once → finish_task in the SAME run. Do not narrate what you are about to do and stop; do not wait for a "continue".
+- Once the requested Android operation has been performed (or definitively failed), call finish_task with the outcome. Do not keep reasoning, re-checking or re-listing apps afterwards.
+- request_user_input is ONLY for a genuine blocker: no phone online, a truly unknown app with no resolvable package, or an explicitly destructive action needing approval. Choosing between known package variants is not a blocker.
+- Repeating home / recents / status / foreground_app / wait_for_* checks is fine; repeating an action that already failed the same way is not — change approach or report the blocker.`;
