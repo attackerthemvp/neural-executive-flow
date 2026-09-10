@@ -54,3 +54,24 @@ describe("android app mapping", () => {
     expect(ANDROID_REPEAT_SAFE_COMMANDS.has("click_element")).toBe(false);
   });
 });
+
+describe("device-verified packages and recents", () => {
+  test("phone resolves to the verified Samsung contacts package", () => {
+    expect(resolveAndroidApp("phone").resolved).toBe("com.samsung.android.contacts");
+    expect(resolveAndroidApp("dialer").resolved).toBe("com.samsung.android.contacts");
+  });
+
+  test("janitor ai is a known app", () => {
+    expect(resolveAndroidApp("Janitor AI").resolved).toBe("com.janitor.ai");
+  });
+
+  test("recents navigation is repeat-safe", () => {
+    expect(ANDROID_REPEAT_SAFE_COMMANDS.has("recents")).toBe(true);
+  });
+
+  test("prompt rules cover recents, incomplete list_apps and completion", () => {
+    expect(ANDROID_INTENT_RULES).toContain("recents");
+    expect(ANDROID_INTENT_RULES).toContain("INCOMPLETE");
+    expect(ANDROID_INTENT_RULES).toContain("COMPLETION");
+  });
+});

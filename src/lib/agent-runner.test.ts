@@ -266,3 +266,39 @@ describe("stall protection", () => {
     expect(result.status).toBe("aborted");
   });
 });
+
+describe("task completion", () => {
+  test("accepts prose as the answer instead of nudging forever", async () => {
+    let calls = 0;
+    const result = await runAgent({
+      initialHistory: start,
+      maxContinueNudges: 1,
+      callModel: async () => {
+        calls++;
+        if (calls === 1) return response("", [{ id: "1", name: "phone_agent_command", args: { command: "open_app" } }]);
+        return response("Camera is open.");
+      },
+      executeTool: async () => ({ content: "ok" }),
+    });
+    expect(result.status).toBe("completed");
+    expect(result.finalText).toBe("Camera is open.");
+    expect(calls).toBe(3);
+  });
+
+  test("controller nudges are internal and never rendered", async () => {
+    const result = await runAgent({
+      initialHistory: start,
+      maxContinueNudges: 1,
+      callModel: async (h) =>
+        h.length === 1
+          ? response("", [{ id: "1", name: "run_command" }])
+          : response("done"),
+      executeTool: async () => ({ content: "ok" }),
+    });
+    const nudges = result.history.filter(
+      (m) => typeof m.content === "string" && m.content.includes("execution controller"),
+    );
+    expect(nudges.length).toBeGreaterThan(0);
+    expect(nudges.every((m) => m.internal === true)).toBe(true);
+  });
+});
