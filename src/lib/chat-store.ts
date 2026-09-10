@@ -11,6 +11,8 @@ export type ChatMessage = {
   tool_calls?: any[];
   tool_call_id?: string;
   display?: { tools?: ToolCallRecord[] };
+  /** Execution-controller bookkeeping: sent to the model, never shown in chat. */
+  internal?: boolean;
   ts?: number;
 };
 

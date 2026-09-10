@@ -649,6 +649,7 @@ function MessageBubble({
   expandTools?: boolean;
 }) {
   if (msg.role === "tool") return null; // shown via display.tools instead
+  if (msg.internal) return null; // execution-controller nudges stay internal
   if (msg.role === "assistant" && msg.display?.tools) {
     if (!showTools) return null;
     return (
