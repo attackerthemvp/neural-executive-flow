@@ -305,12 +305,12 @@ export function JarvisChat({
                 content: JSON.stringify({
                   ...r,
                   hint: !r.candidates.length
-                    ? "Unknown app. Ask the user for the package id or check list_apps on the phone."
+                    ? "Unknown app. Ask the user for the package id — never guess or use a placeholder package."
                     : r.resolved
-                      ? `Use phone_agent_command {"command":"open_app","args":{"package":"${r.resolved}"}}, then verify with foreground_app / wait_for_app.`
+                      ? `Resolved. Act now: phone_agent_command {"command":"open_app","args":{"package":"${r.resolved}"}} — do NOT ask the user to choose between candidates. Verify once with foreground_app / wait_for_app, then finish_task.`
                       : installed
-                        ? "None of the known variants is installed on this phone."
-                        : "Several variants exist — run list_apps and call android_app_lookup again with installed_packages to pick the installed one.",
+                        ? "None of the known variants appears in list_apps, but list_apps on this device is incomplete — try the first candidate anyway before telling the user it is missing."
+                        : `Multiple OEM variants. Try ${r.candidates[0]} first; if open_app errors, try the next candidate. Do not ask the user to pick.`,
                 }),
               };
             }
@@ -649,6 +649,7 @@ function MessageBubble({
   expandTools?: boolean;
 }) {
   if (msg.role === "tool") return null; // shown via display.tools instead
+  if (msg.internal) return null; // execution-controller nudges stay internal
   if (msg.role === "assistant" && msg.display?.tools) {
     if (!showTools) return null;
     return (

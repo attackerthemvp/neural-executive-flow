@@ -6,6 +6,7 @@ export const DEFAULT_MAX_RUN_MS = 15 * 60_000;
 export const DEFAULT_MAX_IDENTICAL_CALLS = 3;
 export const DEFAULT_TOOL_TIMEOUT_MS = 10 * 60_000;
 export const DEFAULT_MAX_EMPTY_REPLIES = 3;
+export const DEFAULT_MAX_CONTINUE_NUDGES = 2;
 
 
 const CONTROL_TOOLS = new Set(["finish_task", "request_user_input"]);
@@ -52,6 +53,11 @@ export type AgentRunOptions = {
   toolTimeoutMs?: number;
   /** Consecutive empty model replies tolerated before the run stops with an explanation. */
   maxEmptyReplies?: number;
+  /**
+   * How many times the controller nudges a narrating model before accepting its
+   * prose as the final answer. Prevents the user having to drive the loop.
+   */
+  maxContinueNudges?: number;
   /** Lets the UI cancel a run (Stop button). */
   signal?: AbortSignal;
   now?: () => number;
@@ -102,6 +108,8 @@ export async function runAgent(options: AgentRunOptions): Promise<AgentRunResult
   const maxIdenticalCalls = options.maxIdenticalCalls ?? DEFAULT_MAX_IDENTICAL_CALLS;
   const toolTimeoutMs = options.toolTimeoutMs ?? DEFAULT_TOOL_TIMEOUT_MS;
   const maxEmptyReplies = options.maxEmptyReplies ?? DEFAULT_MAX_EMPTY_REPLIES;
+  const maxContinueNudges = options.maxContinueNudges ?? DEFAULT_MAX_CONTINUE_NUDGES;
+  let continueNudges = 0;
   const now = options.now ?? Date.now;
   const startedAt = now();
   const callCounts = new Map<string, number>();
@@ -169,6 +177,7 @@ export async function runAgent(options: AgentRunOptions): Promise<AgentRunResult
             role: "user",
             content:
               "[NEXUS execution controller] Your last response was empty. Reply with a tool call that advances the task, or call finish_task / request_user_input.",
+            internal: true,
             ts: now(),
           },
         ];
@@ -179,6 +188,13 @@ export async function runAgent(options: AgentRunOptions): Promise<AgentRunResult
       emptyReplies = 0;
       // Once an operational run begins, prose is a checkpoint, not an implicit
       // completion. This prevents future-tense narration from ending the run.
+      // The nudge is internal (never shown in chat) and limited: after
+      // maxContinueNudges the prose IS the answer, so the user never has to
+      // drive the loop by hand.
+      if (continueNudges >= maxContinueNudges) {
+        return stop("completed", text, step);
+      }
+      continueNudges++;
       history = [
         ...history,
         { role: "assistant", content: text, ts: now() },
@@ -186,6 +202,7 @@ export async function runAgent(options: AgentRunOptions): Promise<AgentRunResult
           role: "user",
           content:
             "[NEXUS execution controller] Continue the current task now. Do not narrate a future step and stop. Use tools until verified, then call finish_task. Call request_user_input only for a genuine blocker.",
+          internal: true,
           ts: now(),
         },
       ];
