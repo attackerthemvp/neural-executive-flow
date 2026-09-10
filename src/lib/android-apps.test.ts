@@ -1,5 +1,6 @@
 import { describe, expect, test } from "vitest";
 import {
+  ANDROID_INTENT_RULES,
   ANDROID_REPEAT_SAFE_COMMANDS,
   normalizePhoneCommandArgs,
   resolveAndroidApp,
