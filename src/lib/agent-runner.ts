@@ -177,6 +177,7 @@ export async function runAgent(options: AgentRunOptions): Promise<AgentRunResult
             role: "user",
             content:
               "[NEXUS execution controller] Your last response was empty. Reply with a tool call that advances the task, or call finish_task / request_user_input.",
+            internal: true,
             ts: now(),
           },
         ];
@@ -187,6 +188,13 @@ export async function runAgent(options: AgentRunOptions): Promise<AgentRunResult
       emptyReplies = 0;
       // Once an operational run begins, prose is a checkpoint, not an implicit
       // completion. This prevents future-tense narration from ending the run.
+      // The nudge is internal (never shown in chat) and limited: after
+      // maxContinueNudges the prose IS the answer, so the user never has to
+      // drive the loop by hand.
+      if (continueNudges >= maxContinueNudges) {
+        return stop("completed", text, step);
+      }
+      continueNudges++;
       history = [
         ...history,
         { role: "assistant", content: text, ts: now() },
@@ -194,6 +202,7 @@ export async function runAgent(options: AgentRunOptions): Promise<AgentRunResult
           role: "user",
           content:
             "[NEXUS execution controller] Continue the current task now. Do not narrate a future step and stop. Use tools until verified, then call finish_task. Call request_user_input only for a genuine blocker.",
+          internal: true,
           ts: now(),
         },
       ];
